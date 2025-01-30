@@ -1,0 +1,19 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[lib]
+create-type = ["staticlib"]
+
+[build]
+target = "x86_64-unknown-none-gnu.json"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+strip = true
+panic = "abort"
