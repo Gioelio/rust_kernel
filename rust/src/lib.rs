@@ -1,10 +1,10 @@
-#![feature(asm, core_intrinsics, lang_items)]
-
 #![no_std]
 
-use core::intrinsics;
+mod display;
+
 use core::arch::asm;
 
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {} // Halt the program
@@ -13,18 +13,16 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 fn halt() -> ! {
     unsafe {
         asm!("hlt");
-        intrinsics::unreachable();
+        loop {}
     }
 }
 
 #[no_mangle]
 pub extern "C" fn start64() -> ! {
+    display::vga::terminal_init();
+    display::vga::terminal_writestring("Hello world!");
     halt()
 }
-
-
-#[lang = "eh_personality"]
-fn eh_personality() { }
 
 // memset
 #[no_mangle]

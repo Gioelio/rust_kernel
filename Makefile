@@ -5,6 +5,7 @@ run: bin/kernel.iso
 
 clean:
 	rm -rf bin/
+	rm -rf rust/target/release
 
 bin/folder_creation_hack:
 	mkdir -p bin/isodir/boot/grub
