@@ -75,8 +75,4 @@ mod test {
         assert_eq!(vga_entry_color(VgaColor::Blue, VgaColor::Blue), 0b00010001); 
     }
 
-    #[test]
-    fn first_cell_accessible() {
-        
-    }
 }

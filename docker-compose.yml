@@ -1,0 +1,11 @@
+services:
+  kernel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/kernel
+      - out:/kernel/bin
+    working_dir: /kernel
+volumes:
+  out: {}

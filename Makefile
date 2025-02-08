@@ -3,6 +3,9 @@
 run: bin/kernel.iso
 	qemu-system-x86_64 -cdrom $<
 
+build-iso: bin/isodir/boot/kernel.bin32 bin/isodir/boot/grub/grub.cfg
+	grub-mkrescue -o bin/kernel.iso bin/isodir
+
 clean:
 	rm -rf bin/
 	rm -rf rust/target/release

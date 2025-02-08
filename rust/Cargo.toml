@@ -3,8 +3,6 @@ name = "kernel"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-
 [lib]
 create-type = ["staticlib"]
 
@@ -17,3 +15,10 @@ panic = "abort"
 [profile.release]
 strip = true
 panic = "abort"
+
+[unstable]
+build-std=["core", "alloc"]
+build-std-features=["compiler-builtins-mem"]
+
+[build-dependencies]
+cc = "1.2.12"
