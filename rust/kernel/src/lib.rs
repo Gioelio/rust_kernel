@@ -4,7 +4,6 @@
 //extern crate libc;
 
 mod display;
-mod libc;
 use core::arch::asm;
 
 

@@ -1,24 +1,5 @@
-[package]
-name = "kernel"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-create-type = ["staticlib"]
-
-[build]
-target = "x86_64-unknown-none-gnu.json"
-
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-strip = true
-panic = "abort"
-
-[unstable]
-build-std=["core", "alloc"]
-build-std-features=["compiler-builtins-mem"]
-
-[build-dependencies]
-cc = "1.2.12"
+[workspace]
+resolver = "2"
+members = [
+    "kernel"
+]
