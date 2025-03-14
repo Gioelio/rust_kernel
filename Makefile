@@ -26,11 +26,11 @@ bin/lib/libkernel.a: $(shell find rust/ -type f) bin/folder_creation_hack
 	cargo build --target x86_64-unknown-none --release --manifest-path rust/Cargo.toml
 	cp rust/target/x86_64-unknown-none/release/libkernel.a bin/lib/libkernel.a
 	
-bin/kernel.bin: bin/folder_creation_hack bin/boot.o bin/lib/libkernel.a bin/multiboot.o rust/kernel/kernel.ld
-	ld -n -m elf_x86_64 -o $@ -T rust/kernel/kernel.ld bin/boot.o bin/multiboot.o bin/lib/libkernel.a
+bin/kernel.bin: bin/folder_creation_hack bin/boot.o bin/lib/libkernel.a rust/kernel/kernel.ld
+	ld -n -m elf_x86_64 -o $@ -T rust/kernel/kernel.ld bin/boot.o bin/lib/libkernel.a
 
-bin/multiboot.o: asm/multiboot.asm
-	nasm -f elf64 -o $@ $<
+#bin/multiboot.o: asm/multiboot.asm
+#	nasm -f elf64 -o $@ $<
 
 bin/isodir/boot/grub/grub.cfg: asm/grub.cfg
 	mkdir -p bin/isodir/boot/grub/

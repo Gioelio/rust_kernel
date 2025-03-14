@@ -5,7 +5,7 @@
 %define flags align
 %define checksum -(magic + flags)
 
-section .multiboot
+section .multiboot.data
     alignb 4
     dd magic
     dd flags

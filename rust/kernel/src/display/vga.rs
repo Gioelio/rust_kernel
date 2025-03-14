@@ -2,6 +2,7 @@
 const VGA_WIDTH: isize = 80;
 const VGA_HEIGHT: isize = 15;
 const TERMINAL_BUFFER: *mut u16 = 0xB8000 as *mut u16; 
+//const TERMINAL_BUFFER: *mut u16 = 0xC03FF000 as *mut u16;
 
 
 #[derive(PartialEq, Eq)]
