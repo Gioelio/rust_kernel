@@ -1,13 +1,13 @@
+use core::fmt;
 
-const VGA_WIDTH: isize = 80;
-const VGA_HEIGHT: isize = 15;
-const TERMINAL_BUFFER: *mut u16 = 0xB8000 as *mut u16; 
-//const TERMINAL_BUFFER: *mut u16 = 0xC03FF000 as *mut u16;
+const VGA_WIDTH: usize = 80;
+const VGA_HEIGHT: usize = 25;
 
 
-#[derive(PartialEq, Eq)]
+#[allow(dead_code)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
-enum VgaColor {
+pub enum Color {
     Black = 0,
     Blue = 1,
     Green = 2,
@@ -21,59 +21,107 @@ enum VgaColor {
     LightGreen = 10,
     LightCyan = 11,
     LightRed = 12,
-    LightMagenta = 13,
-    LightBrown = 14,
+    Pink = 13,
+    Yellow = 14,
     White = 15,
 }
 
-fn vga_entry_color(fg: VgaColor, bg: VgaColor) -> u8 {
-    fg as u8 | ((bg as u8) << 4)
+#[repr(transparent)]
+struct Entry(u16);
+
+impl Entry {
+    fn new(character: u8, foreground: Color, background: Color) -> Entry {
+        let color = foreground as u8 | ((background as u8) << 4);
+        let bytes = character as u16 | ((color as u16) << 8);
+
+        Entry(bytes)
+    }
 }
 
-fn vga_entry(uc: char, color: u8) -> u16 {
-    uc as u16 | ((color as u16) << 8)
+#[repr(transparent)]
+struct Buffer {
+    chars: [[u16; VGA_WIDTH]; VGA_HEIGHT],  
 }
 
-fn terminal_putchar(idx: isize, ch: char) {
-    let terminal_color = vga_entry_color(VgaColor::White, VgaColor::DarkGray);
-    unsafe {
-        let ptr = TERMINAL_BUFFER.offset(idx); 
-        *ptr = vga_entry(ch, terminal_color);
+impl Buffer {
+    fn write(&mut self, row: usize, col: usize, value: u16) {
+        unsafe { core::ptr::write_volatile(&mut self.chars[row][col], value) };
     }
 
+    fn read(&self, row: usize, col: usize) -> u16 {
+        unsafe { core::ptr::read_volatile(& self.chars[row][col]) }
+    }
 }
 
-pub fn terminal_init() {
+pub struct Writer {
+    column_position: usize,
+    foreground: Color,
+    background: Color,
+    buffer: &'static mut Buffer
+}
 
-    for y in 0..VGA_HEIGHT {
-        for x in 0..VGA_WIDTH {
-            //TODO: understand why this skip is necessary to avoid crash
-            if x == 0 && y == 0 {
-                continue;
+impl Writer {
+    
+    pub fn new(foreground: Color, background: Color, buffer_ptr: *mut u16) -> Writer {
+        Writer {
+            column_position: 0,
+            foreground,
+            background,
+            buffer: unsafe { &mut *(buffer_ptr as *mut Buffer) },
+        }
+    }
+    
+    pub fn write(&mut self, str: &str) {
+        for ch in str.bytes() {
+            match ch {
+                b'\n' => {
+                    self.new_line();
+                }
+                byte => {
+                    if self.column_position >= VGA_WIDTH {
+                        self.new_line();
+                    }
+
+                    self.send_bytes(VGA_HEIGHT - 1, self.column_position, byte);
+                    self.column_position += 1;
+                }
             }
-            let index: isize = y * VGA_WIDTH + x;
-            terminal_putchar(index, ' ');
         }
     }
 
-    terminal_putchar(0_isize, ' ');
-}
+    pub fn clean(&mut self) {
+        for i in 0..VGA_HEIGHT {
+            for j in 0..VGA_WIDTH {
+                self.send_bytes(i, j, b' ');       
+            }
+        }
+    }
 
-pub fn terminal_writestring(str: &str) {
-    let mut idx = 0_isize;
-    for ch in str.bytes() {
-        terminal_putchar(idx, ch as char);
-        idx += 1;
+    fn send_bytes(&mut self, row: usize, col: usize, byte: u8) {
+        let bytes = Entry::new(byte, self.foreground, self.background).0;
+        self.buffer.write(row, col, bytes);
+    }
+
+    pub fn new_line(&mut self) {
+        self.column_position = 0;
+        
+        for i in 0..(VGA_HEIGHT - 1) {
+            for j in 0..VGA_WIDTH {
+                let value = self.buffer.read(i + 1, j);
+                self.buffer.write(i, j, value);
+            }
+        }
+
+        let value = Entry::new(b' ', self.foreground, self.background);
+        for i in 0..VGA_WIDTH {
+            self.buffer.write(VGA_HEIGHT - 1, i, value.0);
+        }
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn bit_shifting() {
-        assert_eq!(vga_entry_color(VgaColor::Blue, VgaColor::Blue), 0b00010001); 
+impl fmt::Write for Writer {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.write(s);
+        Ok(())
     }
-
 }

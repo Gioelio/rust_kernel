@@ -3,7 +3,7 @@
 run: bin/kernel.iso
 	qemu-system-x86_64 -cdrom $<
 
-build-iso: bin/isodir/boot/kernel.bin32 bin/isodir/boot/grub/grub.cfg
+build-iso: bin/isodir/boot/kernel.bin bin/isodir/boot/grub/grub.cfg
 	grub-mkrescue -o bin/kernel.iso bin/isodir
 
 clean:
@@ -36,9 +36,9 @@ bin/isodir/boot/grub/grub.cfg: asm/grub.cfg
 	mkdir -p bin/isodir/boot/grub/
 	cp asm/grub.cfg bin/isodir/boot/grub
 
-bin/isodir/boot/kernel.bin32: bin/kernel.bin32
-	cp bin/kernel.bin32 bin/isodir/boot/kernel.bin32
+bin/isodir/boot/kernel.bin: bin/kernel.bin
+	cp $< $@ 
 
-bin/kernel.iso: bin/isodir/boot/kernel.bin32 bin/isodir/boot/grub/grub.cfg
+bin/kernel.iso: bin/isodir/boot/kernel.bin bin/isodir/boot/grub/grub.cfg
 	grub-mkrescue -o bin/kernel.iso bin/isodir
 
