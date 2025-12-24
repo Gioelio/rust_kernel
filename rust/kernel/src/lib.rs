@@ -1,14 +1,13 @@
 #![no_std]
 #![no_main]
 
-use core::{fmt::Write};
-
-
-//extern crate libc;
-
+mod interrupts;
 mod display;
+
+use core::fmt::Write;
 use core::arch::asm;
-use display::vga::{Writer, Color};
+
+use crate::display::{init_writer, writer};
 //mod vga_buffer;
 
 //use vga_buffer::{Color, Writer};
@@ -16,9 +15,8 @@ use display::vga::{Writer, Color};
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    // Try to print panic info to VGA buffer
-    let vga_buffer = 0xB8000 as *mut u16;
-    let mut writer = Writer::new(Color::Black, Color::LightRed, vga_buffer);
+    let writer = unsafe { writer() };
+    writer.write("[x] Vga Buffer initialized");
     let _ = writeln!(writer, "PANIC: {}", info);
     halt()
 }
@@ -34,27 +32,37 @@ fn halt() -> ! {
 
 #[no_mangle]
 pub extern "C" fn start64() -> ! {
-    let vga_buffer = 0xB8000 as *mut u16;
-    let mut writer = Writer::new(Color::Black, Color::Green, vga_buffer);
-    writer.clean();
-    //writer.clean();
-    //writer.write("x");
-    //writer.clean();
-    //writer.clean();
-    //writer.write("x");
-    //writer.new_line();
-    //writer.new_line();
-    writer.write("Hello\n");
-    //writer.flush();
-    writer.write("Hello\n world!\n");
-    writer.write("ciaociaociao");
+    // Init Writer Vga
+    unsafe {
+        init_writer();
+    }
+
+    let writer = unsafe { writer() };
+    writer.write("[x] Vga Buffer initialized");
     writer.new_line();
-    //writer.write("ciao!\n");
-    //writer.write("ciao");
-    //writer.flush();
-    //display::vga::terminal_init();
-    //display::vga::terminal_writestring("Hello world!");
-    panic!("test");
-    halt()
+
+    // Initialize interrupts
+    interrupts::init_pic();
+    interrupts::init_idt();
+
+    // Enable interrupts
+    unsafe {
+        core::arch::asm!("sti"); // Set interrupt flag
+    }
+
+    writer.write("[x] Interrupts ready");
+    writer.new_line();
+
+    writer.write("----- System ready to be used ------");
+    writer.new_line();
+    writer.new_line();
+
+    
+    //panic!("test");
+    loop {
+        unsafe {
+            asm!("hlt", options(nomem, nostack, preserves_flags));
+        }
+    }
 }
 

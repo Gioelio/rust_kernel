@@ -27,68 +27,77 @@ pub enum Color {
 }
 
 #[repr(transparent)]
-struct Entry(u16);
+#[derive(Debug, Clone, Copy)]
+struct ColorCode(u8);
 
-impl Entry {
-    fn new(character: u8, foreground: Color, background: Color) -> Entry {
-        let color = foreground as u8 | ((background as u8) << 4);
-        let bytes = character as u16 | ((color as u16) << 8);
-
-        Entry(bytes)
+impl ColorCode {
+    const fn new(foreground: Color, background: Color) -> ColorCode {
+        ColorCode((background as u8) << 4 | (foreground as u8))
     }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct ScreenChar {
+    ascii_code: u8,
+    color_code: ColorCode,
 }
 
 #[repr(transparent)]
 struct Buffer {
-    chars: [[u16; VGA_WIDTH]; VGA_HEIGHT],  
+    chars: [[ScreenChar; VGA_WIDTH]; VGA_HEIGHT],  
 }
 
 impl Buffer {
-    fn write(&mut self, row: usize, col: usize, value: u16) {
-        unsafe { core::ptr::write_volatile(&mut self.chars[row][col], value) };
+    fn write(&mut self, row: usize, col: usize, char: ScreenChar) {
+        unsafe { core::ptr::write_volatile(&mut self.chars[row][col], char) };
     }
 
-    fn read(&self, row: usize, col: usize) -> u16 {
+    fn read(&self, row: usize, col: usize) -> ScreenChar {
         unsafe { core::ptr::read_volatile(& self.chars[row][col]) }
     }
 }
 
 pub struct Writer {
     column_position: usize,
-    foreground: Color,
-    background: Color,
+    color_code: ColorCode,
     buffer: &'static mut Buffer
 }
 
 impl Writer {
     
-    pub fn new(foreground: Color, background: Color, buffer_ptr: *mut u16) -> Writer {
+    pub const fn new(foreground: Color, background: Color, buffer_ptr: *mut u16) -> Writer {
         Writer {
             column_position: 0,
-            foreground,
-            background,
+            color_code: ColorCode::new(foreground, background),
             buffer: unsafe { &mut *(buffer_ptr as *mut Buffer) },
         }
     }
     
     pub fn write(&mut self, str: &str) {
         for ch in str.bytes() {
-            match ch {
-                b'\n' => {
+            self.write_byte(ch);
+        }
+    }
+
+    #[inline]
+    pub fn write_byte(&mut self, chr: u8) {
+        match chr {
+            b'\n' => {
+                self.new_line();
+            }
+            byte => {
+                if self.column_position >= VGA_WIDTH {
                     self.new_line();
                 }
-                byte => {
-                    if self.column_position >= VGA_WIDTH {
-                        self.new_line();
-                    }
 
-                    self.send_bytes(VGA_HEIGHT - 1, self.column_position, byte);
-                    self.column_position += 1;
-                }
+                self.send_bytes(VGA_HEIGHT - 1, self.column_position, byte);
+                self.column_position += 1;
             }
         }
     }
 
+    #[allow(dead_code)]
     pub fn clean(&mut self) {
         for i in 0..VGA_HEIGHT {
             for j in 0..VGA_WIDTH {
@@ -98,7 +107,10 @@ impl Writer {
     }
 
     fn send_bytes(&mut self, row: usize, col: usize, byte: u8) {
-        let bytes = Entry::new(byte, self.foreground, self.background).0;
+        let bytes = ScreenChar {
+            color_code: self.color_code,
+            ascii_code: byte
+        };
         self.buffer.write(row, col, bytes);
     }
 
@@ -112,9 +124,12 @@ impl Writer {
             }
         }
 
-        let value = Entry::new(b' ', self.foreground, self.background);
+        let value = ScreenChar {
+            color_code: self.color_code,
+            ascii_code: b' '
+        };
         for i in 0..VGA_WIDTH {
-            self.buffer.write(VGA_HEIGHT - 1, i, value.0);
+            self.buffer.write(VGA_HEIGHT - 1, i, value);
         }
     }
 }
