@@ -16,8 +16,7 @@ use crate::display::{init_writer, writer};
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     let writer = unsafe { writer() };
-    writer.write("[x] Vga Buffer initialized");
-    let _ = writeln!(writer, "PANIC: {}", info);
+    let _ = writeln!(writer, "\nPANIC: {}", info);
     halt()
 }
 
@@ -30,7 +29,7 @@ fn halt() -> ! {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn start64() -> ! {
     // Init Writer Vga
     unsafe {

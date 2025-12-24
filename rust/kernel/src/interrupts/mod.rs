@@ -1,7 +1,7 @@
 mod keyboard;
 
 use core::arch::asm;
-use crate::display::writer;
+use crate::{display::writer, interrupts::keyboard::{Action, KeyType}};
 use keyboard::{Keyboard, KeyState};
 
 
@@ -77,7 +77,7 @@ pub fn init_idt() {
 }
 
 // External assembly handlers
-extern "C" {
+unsafe extern "C" {
     fn divide_by_zero_handler();
     fn general_protection_fault_handler();
     fn page_fault_handler();
@@ -100,7 +100,7 @@ pub struct InterruptFrame {
     ss: u64,
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rust_exception_handler(frame: &InterruptFrame) {
     // TODO: ADD VGA printing here to show errors
     match frame.interrupt_number {
@@ -126,7 +126,7 @@ pub extern "C" fn rust_exception_handler(frame: &InterruptFrame) {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rust_irq_handler(frame: &InterruptFrame) {
     let irq = frame.interrupt_number - 32;
     
@@ -140,10 +140,21 @@ pub extern "C" fn rust_irq_handler(frame: &InterruptFrame) {
             // Keyboard interrupt
             // Read scancode from port 0x60
             let scancode = unsafe { inb(0x60) };
-            let key_info = unsafe { KEYBOARD.parse_scancode(scancode) };
+            #[allow(static_mut_refs)]
+            let key_info = unsafe { KEYBOARD.scan(scancode) };
             
-            if key_info.state == KeyState::Pressed && unsafe { KEYBOARD.is_printable(key_info.chr) } { 
-                writer.write_byte(key_info.chr);
+            if key_info.state == KeyState::Pressed {
+                if let Some(chr) = key_info.key.print() { 
+                    writer.write_byte(chr);
+                }
+                else if let KeyType::Action(action) = key_info.key {
+                    match action {
+                        Action::Delete => {
+                            writer.delete_last_char();
+                        },
+                        _ => {}
+                    }
+                }
             }
             // Process keyboard input
         }

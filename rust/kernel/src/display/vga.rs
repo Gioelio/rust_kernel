@@ -114,6 +114,20 @@ impl Writer {
         self.buffer.write(row, col, bytes);
     }
 
+    pub fn delete_last_char(&mut self) {
+        let value = ScreenChar {
+            color_code: self.color_code,
+            ascii_code: b' '
+        };
+
+        if self.column_position == 0 {
+            todo!()
+        } else {
+            self.column_position -= 1;
+            self.buffer.write(VGA_HEIGHT - 1, self.column_position, value);
+        }
+    }
+
     pub fn new_line(&mut self) {
         self.column_position = 0;
         
