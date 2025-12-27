@@ -126,6 +126,7 @@ pub extern "C" fn rust_exception_handler(frame: &InterruptFrame) {
     }
 }
 
+
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_irq_handler(frame: &InterruptFrame) {
     let irq = frame.interrupt_number - 32;
@@ -151,6 +152,9 @@ pub extern "C" fn rust_irq_handler(frame: &InterruptFrame) {
                     match action {
                         Action::Delete => {
                             writer.delete_last_char();
+                        },
+                        Action::Enter => {
+                            writer.new_line();
                         },
                         _ => {}
                     }

@@ -87,12 +87,12 @@ impl Writer {
                 self.new_line();
             }
             byte => {
+                self.send_bytes(VGA_HEIGHT - 1, self.column_position, byte);
+                self.column_position += 1;
+
                 if self.column_position >= VGA_WIDTH {
                     self.new_line();
                 }
-
-                self.send_bytes(VGA_HEIGHT - 1, self.column_position, byte);
-                self.column_position += 1;
             }
         }
     }
@@ -121,7 +121,28 @@ impl Writer {
         };
 
         if self.column_position == 0 {
-            todo!()
+            for i in (1..VGA_HEIGHT).rev() {
+                for j in 0..VGA_WIDTH {
+                    self.buffer.write(i, j, self.buffer.read(i - 1, j));
+                }
+            }
+
+            // clear first line on the top
+            for i in 0..VGA_WIDTH {
+                self.buffer.write(0, i, value);
+            }
+
+            let mut i = VGA_WIDTH - 1;
+
+            // position the cursor on the previous line
+            while self.buffer.read(VGA_HEIGHT - 1, i).ascii_code == b' '
+                && i != 0
+            {
+                i -= 1;
+            }
+
+            self.column_position = i + 1;
+
         } else {
             self.column_position -= 1;
             self.buffer.write(VGA_HEIGHT - 1, self.column_position, value);

@@ -21,15 +21,6 @@ pub enum KeyType {
 }
 
 impl KeyType {
-    pub fn is_printable(&self) -> bool {
-        match self {
-            Self::Character(_) => true,
-            Self::Number(_) => true,
-            Self::Action(_) => false,
-            Self::Undefined(_) => false
-        }
-    }
-
     pub fn print(&self) -> Option<u8> {
         match *self {
             Self::Character(c) => Some(c),
@@ -108,6 +99,7 @@ impl Keyboard {
                 KeyType::Action(Action::Shift) 
             },                                                      // left shift
             0x0E => KeyType::Action(Action::Delete),                // Delete
+            0x1C => KeyType::Action(Action::Enter),                 // Enter
             _ => KeyType::Undefined(scancode)
         };
 
