@@ -50,7 +50,10 @@ struct Buffer {
 
 impl Buffer {
     fn write(&mut self, row: usize, col: usize, char: ScreenChar) {
-        unsafe { core::ptr::write_volatile(&mut self.chars[row][col], char) };
+        unsafe { 
+            let ptr = &mut self.chars[row][col] as *mut ScreenChar;
+            core::ptr::write_volatile(ptr, char)
+        };
     }
 
     fn read(&self, row: usize, col: usize) -> ScreenChar {
@@ -61,8 +64,11 @@ impl Buffer {
 pub struct Writer {
     column_position: usize,
     color_code: ColorCode,
-    buffer: &'static mut Buffer
+    buffer: *mut Buffer
 }
+
+// Implementation since Writer is static and contains a pointer
+unsafe impl Sync for Writer {}
 
 impl Writer {
     
@@ -70,7 +76,7 @@ impl Writer {
         Writer {
             column_position: 0,
             color_code: ColorCode::new(foreground, background),
-            buffer: unsafe { &mut *(buffer_ptr as *mut Buffer) },
+            buffer: buffer_ptr as *mut Buffer,
         }
     }
     
@@ -111,7 +117,9 @@ impl Writer {
             color_code: self.color_code,
             ascii_code: byte
         };
-        self.buffer.write(row, col, bytes);
+        unsafe {
+            (&mut *self.buffer).write(row, col, bytes);
+        }
     }
 
     pub fn delete_last_char(&mut self) {
@@ -119,23 +127,24 @@ impl Writer {
             color_code: self.color_code,
             ascii_code: b' '
         };
+        let buffer = unsafe { &mut *self.buffer };
 
         if self.column_position == 0 {
             for i in (1..VGA_HEIGHT).rev() {
                 for j in 0..VGA_WIDTH {
-                    self.buffer.write(i, j, self.buffer.read(i - 1, j));
+                    buffer.write(i, j, buffer.read(i - 1, j));
                 }
             }
 
             // clear first line on the top
             for i in 0..VGA_WIDTH {
-                self.buffer.write(0, i, value);
+                buffer.write(0, i, value);
             }
 
             let mut i = VGA_WIDTH - 1;
 
             // position the cursor on the previous line
-            while self.buffer.read(VGA_HEIGHT - 1, i).ascii_code == b' '
+            while buffer.read(VGA_HEIGHT - 1, i).ascii_code == b' '
                 && i != 0
             {
                 i -= 1;
@@ -145,17 +154,18 @@ impl Writer {
 
         } else {
             self.column_position -= 1;
-            self.buffer.write(VGA_HEIGHT - 1, self.column_position, value);
+            buffer.write(VGA_HEIGHT - 1, self.column_position, value);
         }
     }
 
     pub fn new_line(&mut self) {
         self.column_position = 0;
+        let buffer = unsafe { &mut *self.buffer };
         
         for i in 0..(VGA_HEIGHT - 1) {
             for j in 0..VGA_WIDTH {
-                let value = self.buffer.read(i + 1, j);
-                self.buffer.write(i, j, value);
+                let value = buffer.read(i + 1, j);
+                buffer.write(i, j, value);
             }
         }
 
@@ -164,7 +174,7 @@ impl Writer {
             ascii_code: b' '
         };
         for i in 0..VGA_WIDTH {
-            self.buffer.write(VGA_HEIGHT - 1, i, value);
+            buffer.write(VGA_HEIGHT - 1, i, value);
         }
     }
 }

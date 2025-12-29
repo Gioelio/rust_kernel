@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(sync_unsafe_cell)]
 
 mod interrupts;
 mod display;
@@ -10,8 +11,8 @@ use core::fmt::Write;
 use core::arch::asm;
 use core::ptr::addr_of_mut;
 
-use crate::{display::{init_writer, writer}, scheduler::init_scheduler};
-use crate::scheduler::scheduler_instance;
+use crate::display::WRITER;
+use crate::scheduler::SCHEDULER;
 //mod vga_buffer;
 
 //use vga_buffer::{Color, Writer};
@@ -29,7 +30,7 @@ static mut TASK3_STACK: [u8; 4096] = [0; 4096];
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    let writer = unsafe { writer() };
+    let writer = unsafe { &mut *WRITER.get() };
     let _ = writeln!(writer, "\nPANIC: {}", info);
     halt()
 }
@@ -46,36 +47,29 @@ fn halt() -> ! {
 #[unsafe(no_mangle)]
 pub extern "C" fn start64() -> ! {
     // Init Writer Vga
-    unsafe {
-        init_writer();
-    }
+    let writer = unsafe {&mut *WRITER.get()};
 
-    let writer = unsafe { writer() };
     writer.write("[x] Vga Buffer initialized");
     writer.new_line();
 
-    unsafe {
-        init_scheduler();
-    }
+    // Add tasks to scheduler
+    let scheduler = unsafe { &mut *SCHEDULER.get() };
 
-    writer.write("[x] scheduler ready");
+    let task1_base = addr_of_mut!(TASK1_STACK) as u64;
+    let task2_base = addr_of_mut!(TASK2_STACK) as u64;
+    let task3_base = addr_of_mut!(TASK3_STACK) as u64;
+    
+    scheduler.add_task(task1, task1_base, 4096);
+    scheduler.add_task(task2, task2_base, 4096);
+    scheduler.add_task(task3, task3_base, 4096);
+
+    writer.write("[x] tasks added to scheduler");
     writer.new_line();
 
     // Initialize interrupts
     interrupts::init_pic();
     interrupts::init_idt();
 
-    // Add tasks to scheduler
-    unsafe {
-        let task1_base = addr_of_mut!(TASK1_STACK) as u64;
-        let task2_base = addr_of_mut!(TASK2_STACK) as u64;
-        let task3_base = addr_of_mut!(TASK3_STACK) as u64;
-        
-        scheduler_instance().add_task(task1, task1_base, 4096);
-        scheduler_instance().add_task(task2, task2_base, 4096);
-        scheduler_instance().add_task(task3, task3_base, 4096);
-        
-    }
 
     // Enable interrupts
     unsafe {
@@ -89,24 +83,8 @@ pub extern "C" fn start64() -> ! {
     writer.new_line();
     writer.new_line();
 
-    unsafe {
-        scheduler_instance().kernel_dispatcher();
-    }
-
-}
-
-// Kernel idle task - handles deferred interrupts
-fn kernel_idle_task() -> ! {
-    let writer = unsafe { writer() };
     
-    loop {
-        // Handle keyboard interrupt
-
-        // Pause CPU until next interrupt
-        unsafe {
-            asm!("hlt", options(nomem, nostack, preserves_flags));
-        }
-    }
+    scheduler.kernel_dispatcher()
 }
 
 fn task1() -> ! {

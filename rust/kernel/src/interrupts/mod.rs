@@ -1,16 +1,13 @@
 mod keyboard;
 
-use core::{arch::asm, fmt::write};
-use crate::{display::{vga::Writer, writer}, interrupts::keyboard::{Action, KeyType}};
-use crate::scheduler::scheduler_instance;
+use core::arch::asm;
+use crate::{display::{vga::Writer, WRITER}, interrupts::keyboard::{Action, KeyType}, scheduler::SCHEDULER};
 use keyboard::{Keyboard, KeyState};
 
-static mut READY: bool = false;
 pub static mut TIMER_TICKS: u64 = 0;
 pub const SCHEDULE_INTERVAL: u64 = 10;
 
 pub static mut IS_TIME_TO_SCHEDULE: bool = false;
-pub static mut IS_KEYBOARD_INT: bool = false;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
@@ -65,13 +62,13 @@ pub fn init_idt() {
         // Set up exception handlers (interrupts 0-31)
         // Flags 0x8E: Presetn, DPL (00 = Kernel level), Storage segment, Gate type (64-bit
         // interrupt gate)
-        IDT[0].set_handler(divide_by_zero_handler as u64, 0x08, 0x8E);
-        IDT[13].set_handler(general_protection_fault_handler as u64, 0x08, 0x8E);
-        IDT[14].set_handler(page_fault_handler as u64, 0x08, 0x8E);
+        IDT[0].set_handler(divide_by_zero_handler as *const () as u64, 0x08, 0x8E);
+        IDT[13].set_handler(general_protection_fault_handler as *const () as u64, 0x08, 0x8E);
+        IDT[14].set_handler(page_fault_handler as *const () as u64, 0x08, 0x8E);
         
         // Set up IRQ handlers (interrupts 32-47)
-        IDT[32].set_handler(timer_handler as u64, 0x08, 0x8E);
-        IDT[33].set_handler(keyboard_handler as u64, 0x08, 0x8E);
+        IDT[32].set_handler(timer_handler as *const () as u64, 0x08, 0x8E);
+        IDT[33].set_handler(keyboard_handler as *const () as u64, 0x08, 0x8E);
         
         // Load IDT
         let idt_ptr = IdtPointer {
@@ -159,7 +156,7 @@ pub fn keyboard_interrupt(writer: &mut Writer) {
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_irq_handler(frame: &InterruptFrame) {
     let irq = frame.interrupt_number - 32;
-    let writer = unsafe { writer() };
+    let writer = unsafe { &mut *WRITER.get() };
 
     match irq {
         0 => {
@@ -191,19 +188,23 @@ pub extern "C" fn rust_irq_handler(frame: &InterruptFrame) {
     unsafe {
         if IS_TIME_TO_SCHEDULE {
             IS_TIME_TO_SCHEDULE = false;
-            scheduler_instance().return_to_kernel();
+            (&mut *SCHEDULER.get()).return_to_kernel();
         }
     }
 }
 
 // Port I/O helper functions
 unsafe fn outb(port: u16, value: u8) {
-    asm!("out dx, al", in("dx") port, in("al") value, options(nomem, nostack));
+    unsafe {
+        asm!("out dx, al", in("dx") port, in("al") value, options(nomem, nostack));
+    }
 }
 
 unsafe fn inb(port: u16) -> u8 {
     let value: u8;
-    asm!("in al, dx", out("al") value, in("dx") port, options(nomem, nostack));
+    unsafe {
+        asm!("in al, dx", out("al") value, in("dx") port, options(nomem, nostack));
+    }
     value
 }
 

@@ -1,8 +1,7 @@
-use core::{arch::asm, mem::MaybeUninit};
+use core::cell::SyncUnsafeCell;
+use core::arch::asm;
 
-
-use crate::display::writer;
-use crate::interrupts::{IS_KEYBOARD_INT, keyboard_interrupt};
+pub static SCHEDULER: SyncUnsafeCell<Scheduler> = SyncUnsafeCell::new(Scheduler::new());
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -90,16 +89,6 @@ impl Task {
 
 const MAX_TASKS: usize = 32;
 
-#[allow(static_mut_refs)]
-pub unsafe fn init_scheduler() {
-    SCHEDULER.write(Scheduler::new());
-}
-
-#[allow(static_mut_refs)]
-pub unsafe fn scheduler_instance() -> &'static mut Scheduler {
-    SCHEDULER.assume_init_mut()
-}
-
 pub struct Scheduler {
     pub tasks: [Option<Task>; MAX_TASKS],
     current_task: usize,
@@ -136,16 +125,14 @@ impl Scheduler {
     pub fn kernel_dispatcher(&mut self) -> ! {
         // Initialize kernel context to return here
 
-        unsafe {
-            self.kernel_context.rip = kernel_loop as *const () as u64;
-            self.kernel_context.rsp = 0; // will be set on first return
-        }
+        self.kernel_context.rip = kernel_loop as *const () as u64;
+        self.kernel_context.rsp = 0; // will be set on first return
 
         kernel_loop();
 
         fn kernel_loop() -> ! {
             loop {
-                let scheduler = unsafe { scheduler_instance() };
+                let scheduler = unsafe { &mut *SCHEDULER.get() };
 
                 // Schedule next task
                 if let Some(next_idx) = scheduler.schedule() {
@@ -273,7 +260,6 @@ impl Scheduler {
     }
 }
 
-pub static mut SCHEDULER: MaybeUninit<Scheduler> = MaybeUninit::uninit();
 
 unsafe extern "C" {
     fn switch_context(old: *mut TaskContext, new: *const TaskContext);
