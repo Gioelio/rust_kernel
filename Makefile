@@ -25,12 +25,15 @@ bin/boot.o: asm/boot.asm
 bin/interrupts.o: asm/interrupts.asm
 	nasm -f elf64 -o $@ $<
 
+bin/context_switch.o: asm/context_switch.asm
+	nasm -f elf64 -o $@ $<
+
 bin/lib/libkernel.a: $(shell find rust/ -type f) bin/folder_creation_hack
 	cargo build --target x86_64-unknown-none --release --manifest-path rust/Cargo.toml
 	cp rust/target/x86_64-unknown-none/release/libkernel.a bin/lib/libkernel.a
 	
-bin/kernel.bin: bin/folder_creation_hack bin/boot.o bin/lib/libkernel.a rust/kernel/kernel.ld
-	ld -n -m elf_x86_64 -o $@ -T rust/kernel/kernel.ld bin/boot.o bin/interrupts.o bin/lib/libkernel.a
+bin/kernel.bin: bin/folder_creation_hack bin/boot.o bin/interrupts.o bin/context_switch.o bin/lib/libkernel.a rust/kernel/kernel.ld
+	ld -n -m elf_x86_64 -o $@ -T rust/kernel/kernel.ld bin/boot.o bin/context_switch.o bin/interrupts.o bin/lib/libkernel.a
 
 #bin/multiboot.o: asm/multiboot.asm
 #	nasm -f elf64 -o $@ $<

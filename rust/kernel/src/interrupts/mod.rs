@@ -1,9 +1,16 @@
 mod keyboard;
 
-use core::arch::asm;
-use crate::{display::writer, interrupts::keyboard::{Action, KeyType}};
+use core::{arch::asm, fmt::write};
+use crate::{display::{vga::Writer, writer}, interrupts::keyboard::{Action, KeyType}};
+use crate::scheduler::scheduler_instance;
 use keyboard::{Keyboard, KeyState};
 
+static mut READY: bool = false;
+pub static mut TIMER_TICKS: u64 = 0;
+pub const SCHEDULE_INTERVAL: u64 = 10;
+
+pub static mut IS_TIME_TO_SCHEDULE: bool = false;
+pub static mut IS_KEYBOARD_INT: bool = false;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
@@ -102,26 +109,48 @@ pub struct InterruptFrame {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_exception_handler(frame: &InterruptFrame) {
-    // TODO: ADD VGA printing here to show errors
     match frame.interrupt_number {
         0 => {
             // Divide by zero
             // Print error message
-            loop {}  // Halt
+            panic!("Division by zero");
         }
         13 => {
             // General protection fault
             // Print error and registers
-            loop {}
+            panic!("General protection fault");
         }
         14 => {
             // Page fault
             // You can read CR2 register to get fault address
-            loop {}
+            panic!("Page fault");
         }
         _ => {
             // Unknown exception
-            loop {}
+            panic!("Unknown exception");
+        }
+    }
+}
+
+pub fn keyboard_interrupt(writer: &mut Writer) {
+    let scancode = unsafe { inb(0x60) };
+    #[allow(static_mut_refs)]
+    let key_info = unsafe { KEYBOARD.scan(scancode) };
+    
+    if key_info.state == KeyState::Pressed {
+        if let Some(chr) = key_info.key.print() { 
+            writer.write_byte(chr);
+        }
+        else if let KeyType::Action(action) = key_info.key {
+            match action {
+                Action::Delete => {
+                    writer.delete_last_char();
+                },
+                Action::Enter => {
+                    writer.new_line();
+                },
+                _ => {}
+            }
         }
     }
 }
@@ -130,37 +159,23 @@ pub extern "C" fn rust_exception_handler(frame: &InterruptFrame) {
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_irq_handler(frame: &InterruptFrame) {
     let irq = frame.interrupt_number - 32;
-    
+    let writer = unsafe { writer() };
+
     match irq {
         0 => {
             // Timer interrupt
             // You might increment a tick counter here
-        }
-        1 => {
-            let writer = unsafe { writer() };
-            // Keyboard interrupt
-            // Read scancode from port 0x60
-            let scancode = unsafe { inb(0x60) };
-            #[allow(static_mut_refs)]
-            let key_info = unsafe { KEYBOARD.scan(scancode) };
-            
-            if key_info.state == KeyState::Pressed {
-                if let Some(chr) = key_info.key.print() { 
-                    writer.write_byte(chr);
-                }
-                else if let KeyType::Action(action) = key_info.key {
-                    match action {
-                        Action::Delete => {
-                            writer.delete_last_char();
-                        },
-                        Action::Enter => {
-                            writer.new_line();
-                        },
-                        _ => {}
-                    }
+            //
+            unsafe {
+                TIMER_TICKS += 1;
+
+                if TIMER_TICKS.is_multiple_of(SCHEDULE_INTERVAL) {
+                    IS_TIME_TO_SCHEDULE = true;
                 }
             }
-            // Process keyboard input
+        }
+        1 => {
+            keyboard_interrupt(writer);
         }
         _ => {}
     }
@@ -171,6 +186,13 @@ pub extern "C" fn rust_irq_handler(frame: &InterruptFrame) {
             outb(0xA0, 0x20);  // EOI to slave PIC
         }
         outb(0x20, 0x20);      // EOI to master PIC
+    }
+
+    unsafe {
+        if IS_TIME_TO_SCHEDULE {
+            IS_TIME_TO_SCHEDULE = false;
+            scheduler_instance().return_to_kernel();
+        }
     }
 }
 
