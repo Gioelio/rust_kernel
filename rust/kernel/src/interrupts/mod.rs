@@ -57,6 +57,44 @@ pub static mut IDT: [IdtEntry; 256] = [IdtEntry::new(); 256];
 // TODO: move in periferal crate or module
 pub static mut KEYBOARD: Keyboard = Keyboard::new();
 
+/// Initialize PIC (Programmable Interrupt Controllers)
+///
+/// Initialize both Master and Slave PIC for 8259 PIC on x86 hw.
+/// Remaps the dual 8259 PIC interrupt vectors from default (0x08-0x0F) to 0x10-0x1F (32-47).
+///
+/// By default, IRQ vectors overlap with CPU exceptions (0-31), misinterpreting false Page/Double
+/// Faults as hw interrupts trigger. This 4-step ICW sequence offsets Master IRQs (0-7) to vectors
+/// 32-39 and Slave IRQs (8-15) to vectors 40-47 in 8086 mode, then unmasks all hw interrupts lines.
+pub fn init_pic() {
+    unsafe {
+        // ICW1: Initialize PIC (cascade mode)
+        outb(0x20, 0x11);  // Master PIC
+        outb(0xA0, 0x11);  // Slave PIC
+        
+        // ICW2: Remap IRQs
+        // Master PIC: IRQ 0-7 → interrupts 32-39
+        outb(0x21, 32);
+        // Slave PIC: IRQ 8-15 → interrupts 40-47
+        outb(0xA1, 40);
+        
+        // ICW3: Tell master about slave at IRQ2
+        outb(0x21, 0x04);
+        // Tell slave its cascade identity
+        outb(0xA1, 0x02);
+        
+        // ICW4: 8086 mode
+        outb(0x21, 0x01);
+        outb(0xA1, 0x01);
+        
+        // Unmask all IRQs (enable them)
+        outb(0x21, 0x00);
+        outb(0xA1, 0x00);
+    }
+}
+
+/// Interrupt Descriptor Table
+///
+/// Connect the interrupts to the instruction that should be executed when fired.
 pub fn init_idt() {
     unsafe {
         // Set up exception handlers (interrupts 0-31)
@@ -206,31 +244,4 @@ unsafe fn inb(port: u16) -> u8 {
         asm!("in al, dx", out("al") value, in("dx") port, options(nomem, nostack));
     }
     value
-}
-
-pub fn init_pic() {
-    unsafe {
-        // ICW1: Initialize PIC (cascade mode)
-        outb(0x20, 0x11);  // Master PIC
-        outb(0xA0, 0x11);  // Slave PIC
-        
-        // ICW2: Remap IRQs
-        // Master PIC: IRQ 0-7 → interrupts 32-39
-        outb(0x21, 32);
-        // Slave PIC: IRQ 8-15 → interrupts 40-47
-        outb(0xA1, 40);
-        
-        // ICW3: Tell master about slave at IRQ2
-        outb(0x21, 0x04);
-        // Tell slave its cascade identity
-        outb(0xA1, 0x02);
-        
-        // ICW4: 8086 mode
-        outb(0x21, 0x01);
-        outb(0xA1, 0x01);
-        
-        // Unmask all IRQs (enable them)
-        outb(0x21, 0x00);
-        outb(0xA1, 0x00);
-    }
 }

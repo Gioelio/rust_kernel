@@ -83,7 +83,6 @@ pub extern "C" fn start64() -> ! {
     writer.new_line();
     writer.new_line();
 
-    
     scheduler.kernel_dispatcher()
 }
 
