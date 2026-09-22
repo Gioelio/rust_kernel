@@ -1,5 +1,6 @@
 use core::cell::SyncUnsafeCell;
 use core::arch::{asm, naked_asm};
+use x86_64::structures::idt::{InterruptStackFrame, PageFaultErrorCode};
 
 pub static SCHEDULER: SyncUnsafeCell<Scheduler> = SyncUnsafeCell::new(Scheduler::new());
 

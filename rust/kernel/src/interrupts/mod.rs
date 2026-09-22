@@ -1,11 +1,13 @@
 mod keyboard;
 
 use core::arch::asm;
-use crate::{display::{vga::Writer, WRITER}, interrupts::keyboard::{Action, KeyType}, scheduler::SCHEDULER};
+use crate::{display::{WRITER, vga::Writer}, interrupts::keyboard::{Action, KeyType}, io, scheduler::SCHEDULER};
 use keyboard::{Keyboard, KeyState};
+use x86_64::structures::idt::{InterruptStackFrame, PageFaultErrorCode};
+use io::{outb, inb};
 
 pub static mut TIMER_TICKS: u64 = 0;
-pub const SCHEDULE_INTERVAL: u64 = 10;
+pub const SCHEDULE_INTERVAL: u64 = 100;
 
 pub static mut IS_TIME_TO_SCHEDULE: bool = false;
 
@@ -100,15 +102,15 @@ pub fn init_idt() {
         // Set up exception handlers (interrupts 0-31)
         // Flags 0x8E: Presetn, DPL (00 = Kernel level), Storage segment, Gate type (64-bit
         // interrupt gate)
-        IDT[0].set_handler(divide_by_zero_handler as *const () as u64, 0x08, 0x8E);
-        IDT[13].set_handler(general_protection_fault_handler as *const () as u64, 0x08, 0x8E);
+        //IDT[0].set_handler(divide_by_zero_handler as *const () as u64, 0x08, 0x8E);
+        //IDT[13].set_handler(general_protection_fault_handler as *const () as u64, 0x08, 0x8E);
         IDT[14].set_handler(page_fault_handler as *const () as u64, 0x08, 0x8E);
         
         // Set up IRQ handlers (interrupts 32-47)
         IDT[32].set_handler(timer_handler as *const () as u64, 0x08, 0x8E);
         IDT[33].set_handler(keyboard_handler as *const () as u64, 0x08, 0x8E);
         
-        // Load IDT
+        // Load IDT with LIDT
         let idt_ptr = IdtPointer {
             limit: (core::mem::size_of::<[IdtEntry; 256]>() - 1) as u16,
             base: &raw const IDT as *const _ as u64,
@@ -116,15 +118,6 @@ pub fn init_idt() {
 
         asm!("lidt [{}]", in(reg) &idt_ptr, options(readonly, nostack, preserves_flags));
     }
-}
-
-// External assembly handlers
-unsafe extern "C" {
-    fn divide_by_zero_handler();
-    fn general_protection_fault_handler();
-    fn page_fault_handler();
-    fn timer_handler();
-    fn keyboard_handler();
 }
 
 #[repr(C)]
@@ -190,58 +183,36 @@ pub fn keyboard_interrupt(writer: &mut Writer) {
     }
 }
 
-
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_irq_handler(frame: &InterruptFrame) {
-    let irq = frame.interrupt_number - 32;
-    let writer = unsafe { &mut *WRITER.get() };
-
-    match irq {
-        0 => {
-            // Timer interrupt
-            // You might increment a tick counter here
-            //
-            unsafe {
-                TIMER_TICKS += 1;
-
-                if TIMER_TICKS.is_multiple_of(SCHEDULE_INTERVAL) {
-                    IS_TIME_TO_SCHEDULE = true;
-                }
-            }
-        }
-        1 => {
-            keyboard_interrupt(writer);
-        }
-        _ => {}
-    }
-    
-    // Send End of Interrupt (EOI) signal to PIC
+pub extern "x86-interrupt" fn timer_handler(_frame: InterruptStackFrame) {
     unsafe {
-        if irq >= 8 {
-            outb(0xA0, 0x20);  // EOI to slave PIC
-        }
-        outb(0x20, 0x20);      // EOI to master PIC
-    }
+        // Increase timer ticks
+        TIMER_TICKS = TIMER_TICKS.wrapping_add(1);
 
-    unsafe {
-        if IS_TIME_TO_SCHEDULE {
-            IS_TIME_TO_SCHEDULE = false;
+        // send EOI to Master PIC
+        outb(0x20, 0x20);
+
+        // Check end interval and re-schedule next tasks
+        if TIMER_TICKS.is_multiple_of(SCHEDULE_INTERVAL) {
             (&mut *SCHEDULER.get()).return_to_kernel();
         }
+
     }
 }
 
-// Port I/O helper functions
-unsafe fn outb(port: u16, value: u8) {
-    unsafe {
-        asm!("out dx, al", in("dx") port, in("al") value, options(nomem, nostack));
-    }
+pub extern "x86-interrupt" fn keyboard_handler(_frame: InterruptStackFrame) {
+    // store inputs in temporary buffer
+    #[allow(static_mut_refs)]
+    unsafe { KEYBOARD.interrupt_handler(); };
+
+    io::send_eoi();
+   
+    #[allow(static_mut_refs)]
+    unsafe { KEYBOARD.post_interrupt(); };
 }
 
-unsafe fn inb(port: u16) -> u8 {
-    let value: u8;
-    unsafe {
-        asm!("in al, dx", out("al") value, in("dx") port, options(nomem, nostack));
-    }
-    value
+pub extern "x86-interrupt" fn page_fault_handler(
+    frame: InterruptStackFrame,
+    error_code: u64
+) {
+    panic!("Page Fault! Frame: {:#?}, Error Code: {:#?}", frame, error_code);
 }

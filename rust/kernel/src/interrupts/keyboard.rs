@@ -1,3 +1,8 @@
+use crate::{io::read_keyboard,display::WRITER};
+
+/// Maximum amount of character stored between subsequent keyboard interrupts
+const MAX_TEMP_CHARACTERS: usize = 100;
+
 #[derive(PartialEq)]
 pub enum KeyState {
     Pressed,
@@ -38,12 +43,61 @@ pub struct KeyPressed {
 
 pub struct Keyboard {
     pub shift_enabled: bool,
+    /// Temporary buffer to store keyboard inputs before their conversion and usage
+    temp_buffer: [u8; MAX_TEMP_CHARACTERS],
+    /// Where next character should be written
+    temp_index_in: usize,
+    /// Next character to be read
+    temp_index_out: usize
 }
 
 impl Keyboard {
     pub const fn new() -> Keyboard {
-        Keyboard { shift_enabled: false }
+        Keyboard { 
+            shift_enabled: false,
+            temp_buffer: [0; MAX_TEMP_CHARACTERS],
+            temp_index_in: 0,
+            temp_index_out: 0
+        }
     }
+
+    /// Store inputs in a temporary buffer to allow deferred usage
+    pub fn interrupt_handler(&mut self) {
+        let scancode = read_keyboard();
+
+        self.temp_buffer[self.temp_index_in] = scancode;
+        self.temp_index_in = (self.temp_index_in + 1) % MAX_TEMP_CHARACTERS;
+    }
+    
+    /// Use the temporary buffer to make use of the keyboard inputs
+    pub fn post_interrupt(&mut self) {
+        let writer = unsafe { &mut *WRITER.get() }; 
+
+        while self.temp_index_in != self.temp_index_out {
+            let key_info = self.scan(self.temp_buffer[self.temp_index_out]);
+            self.temp_index_out = (self.temp_index_out + 1) % MAX_TEMP_CHARACTERS;
+           
+            // TODO: eventually replace this with a function pointer
+            if key_info.state == KeyState::Pressed {
+                if let Some(chr) = key_info.key.print() { 
+                    writer.write_byte(chr);
+                }
+                else if let KeyType::Action(action) = key_info.key {
+                    match action {
+                        Action::Delete => {
+                            writer.delete_last_char();
+                        },
+                        Action::Enter => {
+                            writer.new_line();
+                        },
+                        _ => {}
+                    }
+                }
+            }
+
+       }
+    }
+
 
     pub fn is_number(&self, ascii_code: u8) -> bool {
         matches!(ascii_code, 0x30..=0x39)
@@ -90,6 +144,7 @@ impl Keyboard {
             0x2D => KeyType::Character(0x78),                       // X
             0x15 => KeyType::Character(0x79),                       // Y
             0x2C => KeyType::Character(0x7A),                       // Z
+            0x39 => KeyType::Character(0x20),                       // Space
             0x36 => {
                 self.shift_enabled = state == KeyState::Pressed;
                 KeyType::Action(Action::Shift)

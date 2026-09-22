@@ -1,10 +1,12 @@
 #![no_std]
 #![no_main]
 #![feature(sync_unsafe_cell)]
+#![feature(abi_x86_interrupt)]
 
 mod interrupts;
 mod display;
 mod scheduler;
+mod io;
 
 #[allow(dead_code)]
 use core::fmt::Write;
@@ -109,22 +111,38 @@ fn task1() -> ! {
 
 fn task2() -> ! {
     let mut counter = 0u64;
+
     loop {
-        // Print to second line
+        if counter % 100 == 0 {
         unsafe {
-            let vga = (0xb8000 + 160) as *mut u8;  // 160 = 80 chars * 2 bytes
-            let msg = b"Task 2 running";
+            let vga = (0xb8000 + 160) as *mut u8;
+            let msg = b"Loop count: ";
+
             for (i, &byte) in msg.iter().enumerate() {
                 *vga.offset((i * 2) as isize) = byte;
-                *vga.offset((i * 2 + 1) as isize) = 0x0C;  // Red
+                *vga.offset((i * 2 + 1) as isize) = 0x0C;
             }
-            
-            // Print counter
-            *vga.offset(40) = b'0' + (counter % 10) as u8;
-            counter += 1;
+
+            // Convert `counter` into digits and print left-to-right
+            let mut temp = counter;
+            for digit_idx in (0..10).rev() {
+                let digit = (temp % 10) as u8;
+                temp /= 10;
+
+                // Offset past "Loop count: " (12 chars)
+                let offset = (12 + digit_idx) * 2;
+                *vga.offset(offset as isize) = b'0' + digit;
+                *vga.offset((offset + 1) as isize) = 0x0F; // White
+            }
         }
-        
-        for _ in 0..1000000 { unsafe { asm!("nop"); } }
+        }
+
+        counter = counter.wrapping_add(1);
+
+        // Adjust or remove this loop to observe the change in count speed:
+        for _ in 0..100_000 {
+            unsafe { asm!("nop"); }
+        }
     }
 }
 
