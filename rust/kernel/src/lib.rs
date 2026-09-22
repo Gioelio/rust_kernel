@@ -7,6 +7,7 @@ mod interrupts;
 mod display;
 mod scheduler;
 mod io;
+mod mem;
 
 #[allow(dead_code)]
 use core::fmt::Write;

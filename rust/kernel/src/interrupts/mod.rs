@@ -135,54 +135,6 @@ pub struct InterruptFrame {
     ss: u64,
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_exception_handler(frame: &InterruptFrame) {
-    match frame.interrupt_number {
-        0 => {
-            // Divide by zero
-            // Print error message
-            panic!("Division by zero");
-        }
-        13 => {
-            // General protection fault
-            // Print error and registers
-            panic!("General protection fault");
-        }
-        14 => {
-            // Page fault
-            // You can read CR2 register to get fault address
-            panic!("Page fault");
-        }
-        _ => {
-            // Unknown exception
-            panic!("Unknown exception");
-        }
-    }
-}
-
-pub fn keyboard_interrupt(writer: &mut Writer) {
-    let scancode = unsafe { inb(0x60) };
-    #[allow(static_mut_refs)]
-    let key_info = unsafe { KEYBOARD.scan(scancode) };
-    
-    if key_info.state == KeyState::Pressed {
-        if let Some(chr) = key_info.key.print() { 
-            writer.write_byte(chr);
-        }
-        else if let KeyType::Action(action) = key_info.key {
-            match action {
-                Action::Delete => {
-                    writer.delete_last_char();
-                },
-                Action::Enter => {
-                    writer.new_line();
-                },
-                _ => {}
-            }
-        }
-    }
-}
-
 pub extern "x86-interrupt" fn timer_handler(_frame: InterruptStackFrame) {
     unsafe {
         // Increase timer ticks

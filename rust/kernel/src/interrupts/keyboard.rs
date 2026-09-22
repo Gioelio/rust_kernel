@@ -1,7 +1,8 @@
 use crate::{io::read_keyboard,display::WRITER};
+use crate::mem::RingBuffer;
 
 /// Maximum amount of character stored between subsequent keyboard interrupts
-const MAX_TEMP_CHARACTERS: usize = 100;
+const MAX_TEMP_CHARACTERS: usize = 128;
 
 #[derive(PartialEq)]
 pub enum KeyState {
@@ -43,39 +44,32 @@ pub struct KeyPressed {
 
 pub struct Keyboard {
     pub shift_enabled: bool,
-    /// Temporary buffer to store keyboard inputs before their conversion and usage
-    temp_buffer: [u8; MAX_TEMP_CHARACTERS],
-    /// Where next character should be written
-    temp_index_in: usize,
-    /// Next character to be read
-    temp_index_out: usize
+
+    pub ring_buffer: RingBuffer<u8, MAX_TEMP_CHARACTERS>,
 }
 
 impl Keyboard {
     pub const fn new() -> Keyboard {
         Keyboard { 
             shift_enabled: false,
-            temp_buffer: [0; MAX_TEMP_CHARACTERS],
-            temp_index_in: 0,
-            temp_index_out: 0
+            ring_buffer: RingBuffer::new(0)
         }
     }
 
     /// Store inputs in a temporary buffer to allow deferred usage
-    pub fn interrupt_handler(&mut self) {
+    pub fn interrupt_handler(&self) {
         let scancode = read_keyboard();
 
-        self.temp_buffer[self.temp_index_in] = scancode;
-        self.temp_index_in = (self.temp_index_in + 1) % MAX_TEMP_CHARACTERS;
+        // TODO: the error should Increase the priority of the consumer
+        let _ = self.ring_buffer.push(scancode);
     }
     
     /// Use the temporary buffer to make use of the keyboard inputs
     pub fn post_interrupt(&mut self) {
         let writer = unsafe { &mut *WRITER.get() }; 
 
-        while self.temp_index_in != self.temp_index_out {
-            let key_info = self.scan(self.temp_buffer[self.temp_index_out]);
-            self.temp_index_out = (self.temp_index_out + 1) % MAX_TEMP_CHARACTERS;
+        while let Some(key_input) = self.ring_buffer.pop() {
+            let key_info = self.scan(key_input);
            
             // TODO: eventually replace this with a function pointer
             if key_info.state == KeyState::Pressed {
@@ -167,59 +161,4 @@ impl Keyboard {
             state
         }
     }
-/*
-    pub fn scancode_to_ascii(&mut self, mut scancode: u8) -> KeyPressed {
-        let state = if scancode & 0x80 != 0 {
-            scancode -= 0x80;
-            KeyState::Released
-        } else {
-            KeyState::Pressed
-        };
-
-        let mut chr = match scancode {
-            0x0B => 0x30,                       // 0
-            0x02..=0x0A => scancode + 0x2F,     // 1-9
-            0x1E => 0x61,                       // A
-            0x30 => 0x62,                       // B
-            0x2E => 0x63,                       // C
-            0x20 => 0x64,                       // D
-            0x12 => 0x65,                       // E
-            0x21..=0x23 => scancode + 0x45,     // F-H
-            0x17 => 0x69,                       // I
-            0x24..=0x26 => scancode + 0x46,     // J-L
-            0x32 => 0x6D,                       // M
-            0x31 => 0x6E,                       // N
-            0x18 => 0x6F,                       // O
-            0x19 => 0x70,                       // P
-            0x10 => 0x71,                       // Q
-            0x13 => 0x72,                       // R
-            0x1F => 0x73,                       // S
-            0x14 => 0x74,                       // T
-            0x16 => 0x75,                       // U
-            0x2F => 0x76,                       // V
-            0x11 => 0x77,                       // W
-            0x2D => 0x78,                       // X
-            0x15 => 0x79,                       // Y
-            0x2C => 0x7A,                       // Z
-            0x36 => {
-                self.shift_enabled = state == KeyState::Pressed;
-                0x0E
-            },                                  // right shift
-            0x2A => {
-                self.shift_enabled = state == KeyState::Pressed;
-                0x0E
-            },                                  // left shift
-            0x0E => 0x7F                        // Delete
-            _ => scancode
-        };
-
-        if self.shift_enabled && Keyboard::is_alphabet(chr) {
-            chr -= 0x20;
-        }
-
-        KeyPressed {
-            chr,
-            state
-        }
-    } */
 }
