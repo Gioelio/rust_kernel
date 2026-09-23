@@ -12,6 +12,9 @@ pub struct RingBuffer<T: Sized + Copy, const COUNT: usize> {
     idx_out: AtomicUsize,
 }
 
+// Safety: SPSC queue guarantees producer and consumer access distinct elements
+unsafe impl<T: Send + Copy, const COUNT: usize> Sync for RingBuffer<T, COUNT> {}
+
 impl<T: Sized + Copy, const COUNT: usize> RingBuffer<T, COUNT> {
 
     /// Create a new RingBuffer to handle queue, COUNT must be power of 2
