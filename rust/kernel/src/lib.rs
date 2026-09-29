@@ -14,6 +14,7 @@ use core::arch::asm;
 use core::ptr::addr_of_mut;
 
 use crate::display::WRITER;
+use crate::mem::ram::physical_mem_available_kib;
 use crate::scheduler::SCHEDULER;
 
 // Allocate stacks for tasks (in .bss section)
@@ -43,12 +44,19 @@ fn halt() -> ! {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn start64() -> ! {
+pub extern "C" fn start64(mb_info_addr: u64, _magic: u32) -> ! {
     // Init Writer Vga
     let writer = unsafe { &mut *WRITER.get() };
 
     writer.write("[x] Vga Buffer initialized");
     writer.new_line();
+
+    let ram_available_kib = physical_mem_available_kib(mb_info_addr);
+    if let Some(ram_available_kib) = ram_available_kib {
+        println!("[x] RAM available: {} MB", ram_available_kib / 1024);
+    } else {
+        println!("[o] Total RAM info, not available",);
+    }
 
     // Add tasks to scheduler
     let scheduler = unsafe { &mut *SCHEDULER.get() };

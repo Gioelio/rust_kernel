@@ -112,6 +112,10 @@ long_mode_start:
     mov es, ax
     mov fs, ax
     mov gs, ax
+
+    ; Setting parameter to be sent to Kernel: multiboot info and magic number
+    mov edi, ebx;
+    mov esi, eax;
     
     ; Call Rust entry point
     call start64
