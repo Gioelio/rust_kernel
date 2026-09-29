@@ -30,6 +30,8 @@ p3_table:
     resb 4096
 p2_table:
     resb 4096
+p1_table:
+    resb 4096
 
 section .rodata
 align 8
@@ -51,31 +53,35 @@ extern start64
 _start:
     ; Set up stack
     mov esp, stack_top
-    
-    ; Set up page tables for 64-bit mode
-    ; Map first P4 entry to P3 table
-    mov eax, p3_table
-    or eax, 0b11 ; present + writable
-    mov [p4_table], eax
-    
-    ; Map first P3 entry to P2 table
-    mov eax, p2_table
-    or eax, 0b11 ; present + writable
-    mov [p3_table], eax
-    
-    ; Map each P2 entry to a huge 2MiB page
-    mov ecx, 0
-.map_p2_table:
-    ; Map ecx-th P2 entry to a huge page that starts at address 2MiB*ecx
-    mov eax, 0x200000  ; 2MiB
-    mul ecx            ; start address of ecx-th page
-    or eax, 0b10000011 ; present + writable + huge
-    mov [p2_table + ecx * 8], eax ; map ecx-th entry
-    
-    inc ecx            ; increase counter
-    cmp ecx, 512       ; if counter == 512, the whole P2 table is mapped
-    jne .map_p2_table  ; else map the next entry
 
+    ; Map P4[0] -> P3
+    mov eax, p3_table
+    or eax, 0b011 ; Present + Writable
+    mov [p4_table], eax
+
+    ; Map P3[0] -> P2
+    mov eax, p2_table
+    or eax, 0b011 ; Present + Writable
+    mov [p3_table], eax
+
+    ; Map P2[0] -> P1
+    mov eax, p1_table
+    or eax, 0b011 ; Present + Writable
+    mov [p2_table], eax
+
+    ; Map each P1 entry to a 4 KiB page (512 entries = 2 MiB identity mapped)
+    mov ecx, 0
+.map_p1_table:
+    ; Address = ecx * 4096 (0x1000)
+    mov eax, 0x1000
+    mul ecx,
+    or eax, 0b011                   ; Present + Writable (No huge bit)
+    mov [p1_table + ecx * 8], eax   ; Write entry (8 bytes per entry)
+
+    inc ecx,
+    cmp ecx, 512
+    jne .map_p1_table
+  
     ; Enable PAE-flag in cr4
     mov eax, cr4
     or eax, 1 << 5
